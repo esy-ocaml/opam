@@ -55,13 +55,13 @@ let utf8, utf8_extended =
 
 let timer () =
   if debug () then
-    let t = Unix.gettimeofday () in
-    fun () -> Unix.gettimeofday () -. t
+    let t = UnixNode.gettimeofday () in
+    fun () -> UnixNode.gettimeofday () -. t
   else
     fun () -> 0.
 
 let global_start_time =
-  Unix.gettimeofday ()
+  UnixNode.gettimeofday ()
 
 type text_style =
   [ `bold
@@ -113,12 +113,12 @@ let acolor c oc s = acolor_with_width None c oc s
 let acolor_w width c oc s = acolor_with_width (Some width) c oc s
 
 let timestamp () =
-  let time = Unix.gettimeofday () -. global_start_time in
-  let tm = Unix.gmtime time in
+  let time = UnixNode.gettimeofday () -. global_start_time in
+  let tm = UnixNode.gmtime time in
   let msec = time -. (floor time) in
   Printf.ksprintf (colorise `blue) "%.2d:%.2d.%.3d"
-    (tm.Unix.tm_hour * 60 + tm.Unix.tm_min)
-    tm.Unix.tm_sec
+    (tm.UnixNode.tm_hour * 60 + tm.UnixNode.tm_min)
+    tm.UnixNode.tm_sec
     (int_of_float (1000.0 *. msec))
 
 let log section ?(level=1) fmt =
@@ -136,24 +136,24 @@ let slog to_string channel x = output_string channel (to_string x)
 
 let error fmt =
   Printf.ksprintf (fun str ->
-    flush stdout;
-    Printf.eprintf "%a %s\n%!" (acolor `red) "[ERROR]"
-      (OpamStd.Format.reformat ~start_column:8 ~indent:8 str)
-  ) fmt
+      flush stdout;
+      Printf.eprintf "%a %s\n%!" (acolor `red) "[ERROR]"
+        (OpamStd.Format.reformat ~start_column:8 ~indent:8 str)
+    ) fmt
 
 let warning fmt =
   Printf.ksprintf (fun str ->
-    flush stdout;
-    Printf.eprintf "%a %s\n%!" (acolor `yellow) "[WARNING]"
-      (OpamStd.Format.reformat ~start_column:10 ~indent:10 str)
-  ) fmt
+      flush stdout;
+      Printf.eprintf "%a %s\n%!" (acolor `yellow) "[WARNING]"
+        (OpamStd.Format.reformat ~start_column:10 ~indent:10 str)
+    ) fmt
 
 let note fmt =
   Printf.ksprintf (fun str ->
-    flush stdout;
-    Printf.eprintf "%a %s\n%!" (acolor `blue) "[NOTE]"
-      (OpamStd.Format.reformat ~start_column:7 ~indent:7 str)
-  ) fmt
+      flush stdout;
+      Printf.eprintf "%a %s\n%!" (acolor `blue) "[NOTE]"
+        (OpamStd.Format.reformat ~start_column:7 ~indent:7 str)
+    ) fmt
 
 let errmsg fmt =
   flush stdout;
@@ -161,9 +161,9 @@ let errmsg fmt =
 
 let error_and_exit ?(num=66) fmt =
   Printf.ksprintf (fun str ->
-    error "%s" str;
-    OpamStd.Sys.exit num
-  ) fmt
+      error "%s" str;
+      OpamStd.Sys.exit num
+    ) fmt
 
 let msg fmt =
   flush stderr;
@@ -250,56 +250,56 @@ let confirm ?(default=true) fmt =
   Printf.ksprintf (fun s ->
       try
         if OpamCoreConfig.(!r.safe_mode) then false else
-        let prompt () =
-          formatted_msg "%s [%s] " s (if default then "Y/n" else "y/N")
-        in
-        if OpamCoreConfig.(!r.answer) = Some true then
-          (prompt (); msg "y\n"; true)
-        else if OpamCoreConfig.(!r.answer) = Some false ||
-                OpamStd.Sys.(not tty_in)
-        then
-          (prompt (); msg "n\n"; false)
-        else if OpamStd.Sys.(not tty_out || os () = Win32 || os () = Cygwin) then
-          let rec loop () =
-            prompt ();
-            match String.lowercase_ascii (read_line ()) with
-            | "y" | "yes" -> true
-            | "n" | "no" -> false
-            | "" -> default
-            | _  -> loop ()
-          in loop ()
-        else
-        let open Unix in
-        prompt ();
-        let buf = Bytes.create 1 in
-        let rec loop () =
-          let ans =
-            try
-              if read stdin buf 0 1 = 0 then raise End_of_file
-              else Some (Char.lowercase_ascii (Bytes.get buf 0))
-            with
-            | Unix.Unix_error (Unix.EINTR,_,_) -> None
-            | Unix.Unix_error _ -> raise End_of_file
+          let prompt () =
+            formatted_msg "%s [%s] " s (if default then "Y/n" else "y/N")
           in
-          match ans with
-          | Some 'y' -> print_endline (Bytes.to_string buf); true
-          | Some 'n' -> print_endline (Bytes.to_string buf); false
-          | Some '\n' -> print_endline (if default then "y" else "n"); default
-          | _ -> loop ()
-        in
-        let attr = tcgetattr stdin in
-        let reset () =
-          tcsetattr stdin TCSAFLUSH attr;
-          tcflush stdin TCIFLUSH;
-        in
-        try
-          tcsetattr stdin TCSAFLUSH
-            {attr with c_icanon = false; c_echo = false};
-          tcflush stdin TCIFLUSH;
-          let r = loop () in
-          reset ();
-          r
-        with e -> reset (); raise e
+          if OpamCoreConfig.(!r.answer) = Some true then
+            (prompt (); msg "y\n"; true)
+          else if OpamCoreConfig.(!r.answer) = Some false ||
+                  OpamStd.Sys.(not tty_in)
+          then
+            (prompt (); msg "n\n"; false)
+          else if OpamStd.Sys.(not tty_out || os () = Win32 || os () = Cygwin) then
+            let rec loop () =
+              prompt ();
+              match String.lowercase_ascii (read_line ()) with
+              | "y" | "yes" -> true
+              | "n" | "no" -> false
+              | "" -> default
+              | _  -> loop ()
+            in loop ()
+          else
+            let open UnixNode in
+            prompt ();
+            let buf = Bytes.create 1 in
+            let rec loop () =
+              let ans =
+                try
+                  if read stdin buf 0 1 = 0 then raise End_of_file
+                  else Some (Char.lowercase_ascii (Bytes.get buf 0))
+                with
+                | UnixNode.Unix_error (UnixNode.EINTR,_,_) -> None
+                | UnixNode.Unix_error _ -> raise End_of_file
+              in
+              match ans with
+              | Some 'y' -> print_endline (Bytes.to_string buf); true
+              | Some 'n' -> print_endline (Bytes.to_string buf); false
+              | Some '\n' -> print_endline (if default then "y" else "n"); default
+              | _ -> loop ()
+            in
+            let attr = tcgetattr stdin in
+            let reset () =
+              tcsetattr stdin TCSAFLUSH attr;
+              tcflush stdin TCIFLUSH;
+            in
+            try
+              tcsetattr stdin TCSAFLUSH
+                {attr with c_icanon = false; c_echo = false};
+              tcflush stdin TCIFLUSH;
+              let r = loop () in
+              reset ();
+              r
+            with e -> reset (); raise e
       with
       | End_of_file -> msg "%s\n" (if default then "y" else "n"); default
       | Sys.Break as e -> msg "\n"; raise e

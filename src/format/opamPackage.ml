@@ -250,11 +250,11 @@ let names_of_packages nvset =
 
 let packages_of_name nvset n =
   if n = "" then Set.empty else
-  let inf = {name = String.sub n 0 (String.length n - 1); version= ""} in
-  let sup = {name = n^"\000"; version = ""} in
-  let _, _, nvset = Set.split inf nvset in
-  let nvset, _, _ = Set.split sup nvset in
-  Set.filter (fun nv -> nv.name = n) nvset
+    let inf = {name = String.sub n 0 (String.length n - 1); version= ""} in
+    let sup = {name = n^"\000"; version = ""} in
+    let _, _, nvset = Set.split inf nvset in
+    let nvset, _, _ = Set.split sup nvset in
+    Set.filter (fun nv -> nv.name = n) nvset
 
 let package_of_name nvset n =
   Set.choose (packages_of_name nvset n)
@@ -292,4 +292,4 @@ let unknown name version =
       (Name.to_string name)
       (Version.to_string v)
 
-module Graph = (OpamParallel.MakeGraph (O) : OpamParallel.GRAPH with type V.t = t)
+(*module Graph = (OpamParallel.MakeGraph (O) : OpamParallel.GRAPH with type V.t = t)*)

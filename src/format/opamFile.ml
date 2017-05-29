@@ -110,7 +110,7 @@ module MakeIO (F : IO_Arg) = struct
       with Sys_error _ -> raise (OpamSystem.File_not_found filename)
     in
     try
-      Unix.lockf (Unix.descr_of_out_channel oc) Unix.F_LOCK 0;
+      UnixNode.lockf (UnixNode.descr_of_out_channel oc) UnixNode.F_LOCK 0;
       F.to_channel f oc v;
       close_out oc;
       Stats.write_files := filename :: !Stats.write_files;
@@ -123,7 +123,7 @@ module MakeIO (F : IO_Arg) = struct
     try
       let ic = OpamFilename.open_in f in
       try
-        Unix.lockf (Unix.descr_of_in_channel ic) Unix.F_RLOCK 0;
+        UnixNode.lockf (UnixNode.descr_of_in_channel ic) UnixNode.F_RLOCK 0;
         Stats.read_files := filename :: !Stats.read_files;
         let r = F.of_channel f ic in
         close_in ic;
@@ -283,13 +283,13 @@ module LinesBase = struct
   let find_escapes s len =
     let rec aux acc i =
       if i < 0 then acc else
-      let acc =
-        match s.[i] with
-        | '\\' | ' ' | '\t' | '\n' ->
-          let esc,count = acc in
-          i::esc, count + 1
-        | _ -> acc in
-      aux acc (i-1) in
+        let acc =
+          match s.[i] with
+          | '\\' | ' ' | '\t' | '\n' ->
+            let esc,count = acc in
+            i::esc, count + 1
+          | _ -> acc in
+        aux acc (i-1) in
     aux ([],0) (len - 1)
 
   let escape_spaces str =
@@ -542,9 +542,9 @@ module Environment = LineFile(struct
 
 
     let pp =
-       pp -|
-       Pp.map_list
-         (Pp.pp
+      pp -|
+      Pp.map_list
+        (Pp.pp
            (fun ~pos:_ (a, (b, (c, d))) -> (a, b, c, d))
            (fun (a, b, c, d) -> (a, (b, (c, d)))))
 
@@ -749,106 +749,106 @@ module Syntax = struct
     match current_str_opt with
     | None -> to_string filename (Pp.print pp (filename, t))
     | Some str ->
-    let syn_file = of_string filename str in
-    let syn_t = Pp.print pp (filename, t) in
-    let it_ident = function
-      | Variable (_, f, _) -> `Var f
-      | Section (_, {section_kind = k; section_name = n; _}) -> `Sec (k,n)
-    in
-    let it_pos = function
-      | Section (pos,_) | Variable (pos,_,_) -> pos
-    in
-    let lines_index =
-      let rec aux acc s =
-        let until =
-          try Some (String.index_from s (List.hd acc) '\n')
-          with Not_found -> None
-        in
-        match until with
-        | Some until -> aux (until+1 :: acc) s
-        | None -> Array.of_list (List.rev acc)
+      let syn_file = of_string filename str in
+      let syn_t = Pp.print pp (filename, t) in
+      let it_ident = function
+        | Variable (_, f, _) -> `Var f
+        | Section (_, {section_kind = k; section_name = n; _}) -> `Sec (k,n)
       in
-      aux [0] str
-    in
-    let pos_index (_file, li, col) = lines_index.(li - 1) + col in
-    let field_str ident =
-      let rec aux = function
-        | it1 :: r when it_ident it1 = ident ->
-          let start = pos_index (it_pos it1) in
-          let stop = match r with
-            | it2 :: _ -> pos_index (it_pos it2) - 1
-            | [] ->
-              let len = ref (String.length str) in
-              while str.[!len - 1] = '\n' do decr len done;
-              !len
+      let it_pos = function
+        | Section (pos,_) | Variable (pos,_,_) -> pos
+      in
+      let lines_index =
+        let rec aux acc s =
+          let until =
+            try Some (String.index_from s (List.hd acc) '\n')
+            with Not_found -> None
           in
-          String.sub str start (stop - start)
-        | _ :: r -> aux r
-        | [] -> raise Not_found
+          match until with
+          | Some until -> aux (until+1 :: acc) s
+          | None -> Array.of_list (List.rev acc)
+        in
+        aux [0] str
       in
-      aux syn_file.file_contents
-    in
-    let rem, strs =
-      List.fold_left (fun (rem, strs) item ->
-          List.filter (fun i -> it_ident i <> it_ident item) rem,
-          match item with
-          | Variable (pos, name, v) ->
-            (try
-               let ppa = List.assoc name fields in
-               match snd (Pp.print ppa t) with
-               | None | Some (List (_, [])) | Some (List (_,[List(_,[])])) ->
-                 strs
-               | field_syn_t when
-                   field_syn_t =
-                   snd (Pp.print ppa (Pp.parse ppa ~pos (empty, Some v)))
-                 ->
-                 (* unchanged *)
-                 field_str (`Var name) :: strs
-               | _ ->
-                 try
-                   let f =
-                     List.find (fun i -> it_ident i = `Var name) syn_t.file_contents
-                   in
-                   OpamPrinter.items [f] :: strs
-                 with Not_found -> strs
-             with Not_found | OpamPp.Bad_format _ ->
-               if OpamStd.String.starts_with ~prefix:"x-" name then
-                 field_str (`Var name) :: strs
-               else strs)
-          | Section (pos, {section_kind; section_name; section_items}) ->
-            (try
-               let ppa = List.assoc section_kind sections in
-               let print_sec ppa t =
+      let pos_index (_file, li, col) = lines_index.(li - 1) + col in
+      let field_str ident =
+        let rec aux = function
+          | it1 :: r when it_ident it1 = ident ->
+            let start = pos_index (it_pos it1) in
+            let stop = match r with
+              | it2 :: _ -> pos_index (it_pos it2) - 1
+              | [] ->
+                let len = ref (String.length str) in
+                while str.[!len - 1] = '\n' do decr len done;
+                !len
+            in
+            String.sub str start (stop - start)
+          | _ :: r -> aux r
+          | [] -> raise Not_found
+        in
+        aux syn_file.file_contents
+      in
+      let rem, strs =
+        List.fold_left (fun (rem, strs) item ->
+            List.filter (fun i -> it_ident i <> it_ident item) rem,
+            match item with
+            | Variable (pos, name, v) ->
+              (try
+                 let ppa = List.assoc name fields in
                  match snd (Pp.print ppa t) with
-                 | None -> None
-                 | Some v ->
-                   try Some (List.assoc section_name v) with Not_found -> None
-               in
-               let sec_field_t = print_sec ppa t in
-               if sec_field_t <> None &&
-                  sec_field_t =
-                  print_sec ppa
-                    (Pp.parse ppa ~pos
-                       (empty, Some [section_name, section_items]))
-               then
-                 (* unchanged *)
-                 field_str (`Sec (section_kind, section_name)) :: strs
-               else
-               try
-                 let f =
-                   List.filter
-                     (fun i -> it_ident i = `Sec (section_kind, section_name))
-                     syn_t.file_contents
+                 | None | Some (List (_, [])) | Some (List (_,[List(_,[])])) ->
+                   strs
+                 | field_syn_t when
+                     field_syn_t =
+                     snd (Pp.print ppa (Pp.parse ppa ~pos (empty, Some v)))
+                   ->
+                   (* unchanged *)
+                   field_str (`Var name) :: strs
+                 | _ ->
+                   try
+                     let f =
+                       List.find (fun i -> it_ident i = `Var name) syn_t.file_contents
+                     in
+                     OpamPrinter.items [f] :: strs
+                   with Not_found -> strs
+               with Not_found | OpamPp.Bad_format _ ->
+                 if OpamStd.String.starts_with ~prefix:"x-" name then
+                   field_str (`Var name) :: strs
+                 else strs)
+            | Section (pos, {section_kind; section_name; section_items}) ->
+              (try
+                 let ppa = List.assoc section_kind sections in
+                 let print_sec ppa t =
+                   match snd (Pp.print ppa t) with
+                   | None -> None
+                   | Some v ->
+                     try Some (List.assoc section_name v) with Not_found -> None
                  in
-                 OpamPrinter.items f :: strs
-               with Not_found -> strs
-             with Not_found | OpamPp.Bad_format _ -> strs)
-        )
-        (syn_t.file_contents, []) syn_file.file_contents
-    in
-    String.concat "\n"
-      (List.rev_append strs
-         (if rem = [] then [""] else [OpamPrinter.items rem;""]))
+                 let sec_field_t = print_sec ppa t in
+                 if sec_field_t <> None &&
+                    sec_field_t =
+                    print_sec ppa
+                      (Pp.parse ppa ~pos
+                         (empty, Some [section_name, section_items]))
+                 then
+                   (* unchanged *)
+                   field_str (`Sec (section_kind, section_name)) :: strs
+                 else
+                   try
+                     let f =
+                       List.filter
+                         (fun i -> it_ident i = `Sec (section_kind, section_name))
+                         syn_t.file_contents
+                     in
+                     OpamPrinter.items f :: strs
+                   with Not_found -> strs
+               with Not_found | OpamPp.Bad_format _ -> strs)
+          )
+          (syn_t.file_contents, []) syn_file.file_contents
+      in
+      String.concat "\n"
+        (List.rev_append strs
+           (if rem = [] then [""] else [OpamPrinter.items rem;""]))
 
 end
 
@@ -2004,10 +2004,10 @@ module OPAMSyntax = struct
   let env (t:t) =
     List.map
       (fun env -> match t.name, env with
-        | Some name, (var,op,value,None) ->
-          var, op, value,
-          Some ("Updated by package " ^ OpamPackage.Name.to_string name)
-        | _, b -> b)
+         | Some name, (var,op,value,None) ->
+           var, op, value,
+           Some ("Updated by package " ^ OpamPackage.Name.to_string name)
+         | _, b -> b)
       t.env
 
   let build t = t.build
@@ -2191,24 +2191,24 @@ module OPAMSyntax = struct
        OpamVersion.compare opam_version (OpamVersion.of_string "1.2") < 0
     then depopts
     else
-    (* Make sure depopts are a pure disjunction *)
-    let rec aux acc disjunction =
-      List.fold_left (fun acc -> function
-          | OpamFormula.Atom _ as atom -> atom :: acc
-          | f ->
-            Pp.warn ~pos
-              "Optional dependencies must be a disjunction. \
-               Treated as such.";
-            aux acc
-              (OpamFormula.fold_left (fun acc a -> OpamFormula.Atom a::acc)
-                 [] f)
-        )
-        acc disjunction
-    in
-    OpamFormula.ors_to_list depopts
-    |> aux []
-    |> List.rev
-    |> OpamFormula.ors
+      (* Make sure depopts are a pure disjunction *)
+      let rec aux acc disjunction =
+        List.fold_left (fun acc -> function
+            | OpamFormula.Atom _ as atom -> atom :: acc
+            | f ->
+              Pp.warn ~pos
+                "Optional dependencies must be a disjunction. \
+                 Treated as such.";
+              aux acc
+                (OpamFormula.fold_left (fun acc a -> OpamFormula.Atom a::acc)
+                   [] f)
+          )
+          acc disjunction
+      in
+      OpamFormula.ors_to_list depopts
+      |> aux []
+      |> List.rev
+      |> OpamFormula.ors
 
   let cleanup_conflicts opam_version ~pos conflicts =
     (* Conflicts were encoded as a conjunction before 1.3, which didn't match
@@ -2219,16 +2219,16 @@ module OPAMSyntax = struct
         OpamFormula.(ors_to_list f)
     in
     if is_disjunction conflicts then conflicts else
-    let force_disjunction f =
-      OpamFormula.map_formula (function
-          | And (a, b) -> Or (a, b)
-          | f -> f)
-        f
-    in
-    if OpamVersion.(compare opam_version (of_string "1.3") >= 0) then
-      Pp.warn ~pos "Conflicts must be a disjunction, '&' is not \
-                    supported (treated as '|').";
-    force_disjunction conflicts
+      let force_disjunction f =
+        OpamFormula.map_formula (function
+            | And (a, b) -> Or (a, b)
+            | f -> f)
+          f
+      in
+      if OpamVersion.(compare opam_version (of_string "1.3") >= 0) then
+        Pp.warn ~pos "Conflicts must be a disjunction, '&' is not \
+                      supported (treated as '|').";
+      force_disjunction conflicts
 
   let cleanup_flags _opam_version ~pos flags =
     let known_flags =
@@ -2665,7 +2665,7 @@ module OPAM = struct
            | [] -> Some (URL.create (URL.url u)) (* ignore mirrors *)
            | cksum::_ ->
              Some (URL.with_checksum [cksum] URL.empty));
-             (* ignore actual url and extra checksums *)
+      (* ignore actual url and extra checksums *)
       descr       = empty.descr;
 
       metadata_dir = empty.metadata_dir;

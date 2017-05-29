@@ -54,7 +54,7 @@ let rec rmdir_cleanup dirname =
   )
 
 let cwd () =
-  Dir.of_string (Unix.getcwd ())
+  Dir.of_string (UnixNode.getcwd ())
 
 let mkdir dirname =
   OpamSystem.mkdir (Dir.to_string dirname)
@@ -91,8 +91,8 @@ let move_dir ~src ~dst =
     [ "mv"; Dir.to_string src; Dir.to_string dst ]
 
 let exists_dir dirname =
-  try (Unix.stat (Dir.to_string dirname)).Unix.st_kind = Unix.S_DIR
-  with Unix.Unix_error _ -> false
+  try (UnixNode.stat (Dir.to_string dirname)).UnixNode.st_kind = UnixNode.S_DIR
+  with UnixNode.Unix_error _ -> false
 
 let opt_dir dirname =
   if exists_dir dirname then Some dirname else None
@@ -150,7 +150,7 @@ let touch t =
   OpamSystem.write (to_string t) ""
 
 let chmod t p =
-  Unix.chmod (to_string t) p
+  UnixNode.chmod (to_string t) p
 
 let of_string s =
   let dirname = Filename.dirname s in
@@ -182,8 +182,8 @@ let remove filename =
   OpamSystem.remove_file (to_string filename)
 
 let exists filename =
-  try (Unix.stat (to_string filename)).Unix.st_kind = Unix.S_REG
-  with Unix.Unix_error _ -> false
+  try (UnixNode.stat (to_string filename)).UnixNode.st_kind = UnixNode.S_REG
+  with UnixNode.Unix_error _ -> false
 
 let opt_file filename =
   if exists filename then Some filename else None
@@ -224,28 +224,28 @@ let move ~src ~dst =
 
 let readlink src =
   if exists src then
-    try of_string (Unix.readlink (to_string src))
-    with Unix.Unix_error _ -> src
+    try of_string (UnixNode.readlink (to_string src))
+    with UnixNode.Unix_error _ -> src
   else
     OpamSystem.internal_error "%s does not exist." (to_string src)
 
 let is_symlink src =
   try
-    let s = Unix.lstat (to_string src) in
-    s.Unix.st_kind = Unix.S_LNK
-  with Unix.Unix_error _ ->
+    let s = UnixNode.lstat (to_string src) in
+    s.UnixNode.st_kind = UnixNode.S_LNK
+  with UnixNode.Unix_error _ ->
     OpamSystem.internal_error "%s does not exist." (to_string src)
 
 let is_symlink_dir src =
   try
-    let s = Unix.lstat (Dir.to_string src) in
-    s.Unix.st_kind = Unix.S_LNK
-  with Unix.Unix_error _ ->
+    let s = UnixNode.lstat (Dir.to_string src) in
+    s.UnixNode.st_kind = UnixNode.S_LNK
+  with UnixNode.Unix_error _ ->
     OpamSystem.internal_error "%s does not exist." (Dir.to_string src)
 
 let is_exec file =
   try OpamSystem.is_exec (to_string file)
-  with Unix.Unix_error _ ->
+  with UnixNode.Unix_error _ ->
     OpamSystem.internal_error "%s does not exist." (to_string file)
 
 let starts_with dirname filename =
@@ -322,29 +322,29 @@ let remove_suffix suffix filename =
 
 let rec find_in_parents f dir =
   if f dir then Some dir else
-  let parent = dirname_dir dir in
-  if parent = dir then None
-  else find_in_parents f parent
+    let parent = dirname_dir dir in
+    if parent = dir then None
+    else find_in_parents f parent
 
 let link ?(relative=false) ~target ~link =
   if target = link then () else
-  let target =
-    if not relative then to_string target else
-    match
-      find_in_parents (fun d -> d <> "/" && starts_with d link) (dirname target)
-    with
-    | None -> to_string target
-    | Some ancestor ->
-      let back =
-        let rel = remove_prefix_dir ancestor (dirname link) in
-        OpamStd.List.concat_map Filename.dir_sep
-          (fun _ -> "..")
-          (OpamStd.String.split rel Filename.dir_sep.[0])
-      in
-      let forward = remove_prefix ancestor target in
-      Filename.concat back forward
-  in
-  OpamSystem.link target (to_string link)
+    let target =
+      if not relative then to_string target else
+        match
+          find_in_parents (fun d -> d <> "/" && starts_with d link) (dirname target)
+        with
+        | None -> to_string target
+        | Some ancestor ->
+          let back =
+            let rel = remove_prefix_dir ancestor (dirname link) in
+            OpamStd.List.concat_map Filename.dir_sep
+              (fun _ -> "..")
+              (OpamStd.String.split rel Filename.dir_sep.[0])
+          in
+          let forward = remove_prefix ancestor target in
+          Filename.concat back forward
+    in
+    OpamSystem.link target (to_string link)
 
 let patch filename dirname =
   OpamSystem.patch ~dir:(Dir.to_string dirname) (to_string filename)
@@ -478,8 +478,8 @@ module Attribute = struct
     `O ([ ("base" , Base.to_json x.base);
           ("md5"  , `String (OpamHash.to_string x.md5))]
         @ match x. perm with
-          | None   -> []
-          | Some p -> ["perm", `String (string_of_int p)])
+        | None   -> []
+        | Some p -> ["perm", `String (string_of_int p)])
 
   module O = struct
     type tmp = t
@@ -498,7 +498,7 @@ end
 let to_attribute root file =
   let basename = Base.of_string (remove_prefix root file) in
   let perm =
-    let s = Unix.stat (to_string file) in
-    s.Unix.st_perm in
+    let s = UnixNode.stat (to_string file) in
+    s.UnixNode.st_perm in
   let digest = OpamHash.compute ~kind:`MD5 (to_string file) in
   Attribute.create basename digest (Some perm)

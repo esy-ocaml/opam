@@ -75,15 +75,15 @@ let get_digest ?(precise=OpamCoreConfig.(!r.precise_tracking)) f size mtime =
   else quick_digest f size mtime
 
 let item_of_filename ?precise f : item =
-  let stats = Unix.lstat f in
-  Unix.(stats.st_uid, stats.st_gid, stats.st_perm),
-  match stats.Unix.st_kind with
-  | Unix.S_REG ->
-    File (get_digest ?precise f stats.Unix.st_size stats.Unix.st_mtime)
-  | Unix.S_DIR -> Dir
-  | Unix.S_LNK -> Link (Unix.readlink f)
-  | Unix.S_CHR | Unix.S_BLK | Unix.S_FIFO | Unix.S_SOCK ->
-    Special Unix.(stats.st_dev, stats.st_rdev)
+  let stats = UnixNode.lstat f in
+  UnixNode.(stats.st_uid, stats.st_gid, stats.st_perm),
+  match stats.UnixNode.st_kind with
+  | UnixNode.S_REG ->
+    File (get_digest ?precise f stats.UnixNode.st_size stats.UnixNode.st_mtime)
+  | UnixNode.S_DIR -> Dir
+  | UnixNode.S_LNK -> Link (UnixNode.readlink f)
+  | UnixNode.S_CHR | UnixNode.S_BLK | UnixNode.S_FIFO | UnixNode.S_SOCK ->
+    Special UnixNode.(stats.st_dev, stats.st_rdev)
 
 let item_digest = function
   | _perms, File d -> "F:" ^ d
@@ -108,16 +108,16 @@ let track dir ?(except=OpamFilename.Base.Set.empty) job_f =
       (fun acc f ->
          let rel = Filename.concat dir f in
          if OpamFilename.Base.(Set.mem (of_string rel) except) then acc else
-         let f = Filename.concat prefix rel in
-         try
-           let item = item_of_filename f in
-           let acc = SM.add rel item acc in
-           match item with
-           | _, Dir -> make_index acc prefix rel
-           | _ -> acc
-         with Unix.Unix_error _ as e ->
-           log "Error at %s: %a" f (slog Printexc.to_string) e;
-           acc)
+           let f = Filename.concat prefix rel in
+           try
+             let item = item_of_filename f in
+             let acc = SM.add rel item acc in
+             match item with
+             | _, Dir -> make_index acc prefix rel
+             | _ -> acc
+           with UnixNode.Unix_error _ as e ->
+             log "Error at %s: %a" f (slog Printexc.to_string) e;
+             acc)
       acc files
   in
   let str_dir = OpamFilename.Dir.to_string dir in
@@ -139,11 +139,11 @@ let track dir ?(except=OpamFilename.Base.Set.empty) job_f =
             if perma = permb then None
             else Some (Perm_changed (item_digest item))
           else
-          match a, b with
-          | File _, File _ | Link _, Link _
-          | Dir, Dir | Special _, Special _ ->
-            Some (Contents_changed (item_digest item))
-          | _ -> Some (Kind_changed (item_digest item)))
+            match a, b with
+            | File _, File _ | Link _, Link _
+            | Dir, Dir | Special _, Special _ ->
+              Some (Contents_changed (item_digest item))
+            | _ -> Some (Kind_changed (item_digest item)))
       before after
   in
   log "after install: %a elements, %a added, scanned in %.3fs"
@@ -157,7 +157,7 @@ let check_digest file digest =
   let precise = is_precise_digest digest in
   let it = item_of_filename ~precise file in
   try if item_digest it = digest then `Unchanged else `Changed
-  with Unix.Unix_error _ -> `Removed
+  with UnixNode.Unix_error _ -> `Removed
 
 let check prefix changes =
   let str_pfx = OpamFilename.Dir.to_string prefix in
@@ -192,7 +192,7 @@ let revert ?title ?(verbose=OpamConsole.verbose()) ?(force=false)
               let precise = is_precise_digest dg in
               let item = item_of_filename ~precise f in
               Some (snd item), Some (item_digest item)
-            with Unix.Unix_error _ -> None, None
+            with UnixNode.Unix_error _ -> None, None
           in
           if cur_dg = None then (fname::already, modified, nonempty, cannot)
           else if cur_dg <> Some dg && not force then
@@ -209,9 +209,9 @@ let revert ?title ?(verbose=OpamConsole.verbose()) ?(force=false)
               in
               (already, modified, nonempty, cannot)
           else
-          let f = OpamFilename.of_string f in
-          rmfile f;
-          acc
+            let f = OpamFilename.of_string f in
+            rmfile f;
+            acc
         | Contents_changed dg ->
           if check_digest f dg = `Changed then
             (already, modified, nonempty, (op,fname)::cannot)

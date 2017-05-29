@@ -94,18 +94,18 @@ module SHA256 = struct
           add a a', add b b', add c c', add d d',
           add e e', add f f', add g g', add h h'
         else
-        let t1 =
-          add (add h (sum1 e)) (add (add (ch e f g) k.(t)) warr.(t))
-        in
-        let t2 = add (sum0 a) (maj a b c) in
-        stir (t + 1)
-          (add t1 t2, a, b, c, add d t1, e, f, g)
+          let t1 =
+            add (add h (sum1 e)) (add (add (ch e f g) k.(t)) warr.(t))
+          in
+          let t2 = add (sum0 a) (maj a b c) in
+          stir (t + 1)
+            (add t1 t2, a, b, c, add d t1, e, f, g)
       in
       stir 0 hh
 
   let hash f =
-    let fd = Unix.openfile f [Unix.O_RDONLY] 0 in
-    let sz = (Unix.fstat fd).Unix.st_size in
+    let fd = UnixNode.openfile f [UnixNode.O_RDONLY] 0 in
+    let sz = (UnixNode.fstat fd).UnixNode.st_size in
     let blocks = sz / 64 in
     let rem = sz mod 64 in
     let a = Bigarray.(Array2.map_file fd int32 c_layout false blocks 16) in
@@ -115,13 +115,13 @@ module SHA256 = struct
     done;
     let lastblock = Bigarray.(Array1.create int32 c_layout 16) in
     let buf = Bytes.create rem in
-    ignore (Unix.lseek fd (blocks * 64) Unix.SEEK_SET);
+    ignore (UnixNode.lseek fd (blocks * 64) UnixNode.SEEK_SET);
     let rec readn i =
-      let r = Unix.read fd buf i (rem - i) in
+      let r = UnixNode.read fd buf i (rem - i) in
       if r < rem - i then readn (i + r)
     in
     readn 0;
-    Unix.close fd;
+    UnixNode.close fd;
     for i = 0 to rem / 4 - 1 do
       Bigarray.Array1.set lastblock i (unsafe_get_32 buf (i*4))
     done;
@@ -262,18 +262,18 @@ module SHA512 = struct
           add a a', add b b', add c c', add d d',
           add e e', add f f', add g g', add h h'
         else
-        let t1 =
-          add (add h (sum1 e)) (add (add (ch e f g) k.(t)) warr.(t))
-        in
-        let t2 = add (sum0 a) (maj a b c) in
-        stir (t + 1)
-          (add t1 t2, a, b, c, add d t1, e, f, g)
+          let t1 =
+            add (add h (sum1 e)) (add (add (ch e f g) k.(t)) warr.(t))
+          in
+          let t2 = add (sum0 a) (maj a b c) in
+          stir (t + 1)
+            (add t1 t2, a, b, c, add d t1, e, f, g)
       in
       stir 0 hh
 
   let hash f =
-    let fd = Unix.openfile f [Unix.O_RDONLY] 0 in
-    let sz = (Unix.fstat fd).Unix.st_size in
+    let fd = UnixNode.openfile f [UnixNode.O_RDONLY] 0 in
+    let sz = (UnixNode.fstat fd).UnixNode.st_size in
     let blocks = sz / 128 in
     let rem = sz mod 128 in
     let a = Bigarray.(Array2.map_file fd int64 c_layout false blocks 16) in
@@ -283,13 +283,13 @@ module SHA512 = struct
     done;
     let lastblock = Bigarray.(Array1.create int64 c_layout 16) in
     let buf = Bytes.create rem in
-    ignore (Unix.lseek fd (blocks * 128) Unix.SEEK_SET);
+    ignore (UnixNode.lseek fd (blocks * 128) UnixNode.SEEK_SET);
     let rec readn i =
-      let r = Unix.read fd buf i (rem - i) in
+      let r = UnixNode.read fd buf i (rem - i) in
       if r < rem - i then readn (i + r)
     in
     readn 0;
-    Unix.close fd;
+    UnixNode.close fd;
     for i = 0 to rem / 8 - 1 do
       Bigarray.Array1.set lastblock i (unsafe_get_64 buf (i*8))
     done;

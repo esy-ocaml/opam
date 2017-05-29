@@ -524,7 +524,7 @@ module Env = struct
 
   let list =
     let lazy_env = lazy (
-      let e = Unix.environment () in
+      let e = UnixNode.environment () in
       List.rev_map (fun s ->
           match OpamString.cut_at s '=' with
           | None   -> s, ""
@@ -557,18 +557,18 @@ module OpamSys = struct
   let with_process_in cmd args f =
     let path = ["/bin";"/usr/bin"] in
     let cmd =
-      List.find Sys.file_exists (List.map (fun d -> Filename.concat d cmd) path)
+      List.find SysNode.file_exists (List.map (fun d -> Filename.concat d cmd) path)
     in
-    let ic = Unix.open_process_in (cmd^" "^args) in
+    let ic = UnixNode.open_process_in (cmd^" "^args) in
     try
       let r = f ic in
-      ignore (Unix.close_process_in ic) ; r
+      ignore (UnixNode.close_process_in ic) ; r
     with exn ->
-      ignore (Unix.close_process_in ic) ; raise exn
+      ignore (UnixNode.close_process_in ic) ; raise exn
 
-  let tty_out = Unix.isatty Unix.stdout
+  let tty_out = UnixNode.isatty UnixNode.stdout
 
-  let tty_in = Unix.isatty Unix.stdin
+  let tty_in = UnixNode.isatty UnixNode.stdin
 
   let default_columns =
     try int_of_string (Env.get "COLUMNS") with
@@ -578,17 +578,17 @@ module OpamSys = struct
   let get_terminal_columns () =
     try (* terminfo *)
       with_process_in "tput" "cols"
-        (fun ic -> int_of_string (input_line ic))
-    with Unix.Unix_error _ | Sys_error _ | Failure _ | End_of_file | Not_found ->
-      try (* GNU stty *)
-        with_process_in "stty" "size"
-          (fun ic ->
-             match OpamString.split (input_line ic) ' ' with
-             | [_ ; v] -> int_of_string v
-             | _ -> failwith "stty")
-      with
-        Unix.Unix_error _ | Sys_error _ | Failure _  | End_of_file | Not_found ->
-          default_columns
+        (fun ic -> int_of_string (PervasivesNode.input_line ic))
+    with UnixNode.Unix_error _ | Sys_error _ | Failure _ | End_of_file | Not_found ->
+    try (* GNU stty *)
+      with_process_in "stty" "size"
+        (fun ic ->
+           match OpamString.split (PervasivesNode.input_line ic) ' ' with
+           | [_ ; v] -> int_of_string v
+           | _ -> failwith "stty")
+    with
+      UnixNode.Unix_error _ | Sys_error _ | Failure _  | End_of_file | Not_found ->
+      default_columns
 
   let terminal_columns =
     let v = ref (lazy (get_terminal_columns ())) in
@@ -612,15 +612,15 @@ module OpamSys = struct
   let uname_s () =
     try
       with_process_in "uname" "-s"
-        (fun ic -> Some (OpamString.strip (input_line ic)))
-    with Unix.Unix_error _ | Sys_error _ | Not_found ->
+        (fun ic -> Some (OpamString.strip (PervasivesNode.input_line ic)))
+    with UnixNode.Unix_error _ | Sys_error _ | Not_found ->
       None
 
   let uname_m () =
     try
       with_process_in "uname" "-m"
-        (fun ic -> Some (OpamString.strip (input_line ic)))
-    with Unix.Unix_error _ | Sys_error _ | Not_found ->
+        (fun ic -> Some (OpamString.strip (PervasivesNode.input_line ic)))
+    with UnixNode.Unix_error _ | Sys_error _ | Not_found ->
       None
 
   type os =
@@ -707,7 +707,7 @@ module OpamSys = struct
     | `zsh  -> home ".zshrc"
     | `bash ->
       (try
-         List.find Sys.file_exists [
+         List.find SysNode.file_exists [
            (* Bash looks up these 3 files in order and only loads the first,
               for LOGIN shells *)
            home ".bash_profile";
@@ -725,7 +725,7 @@ module OpamSys = struct
     | `csh ->
       let cshrc = home ".cshrc" in
       let tcshrc = home ".tcshrc" in
-      if Sys.file_exists cshrc then cshrc else tcshrc
+      if SysNode.file_exists cshrc then cshrc else tcshrc
     | _     -> home ".profile"
 
 
@@ -791,15 +791,15 @@ module OpamFormat = struct
     in
     let cut_at = aux 0 0 in
     if cut_at = String.length s then s else
-    let sub = String.sub s 0 cut_at in
-    let rec rem_escapes i =
-      try
-        let j = String.index_from s i '\027' in
-        let k = String.index_from s (j+1) 'm' in
-        String.sub s j (k - j + 1) :: rem_escapes (k+1)
-      with Not_found | Invalid_argument _ -> []
-    in
-    String.concat "" (sub :: rem_escapes cut_at)
+      let sub = String.sub s 0 cut_at in
+      let rec rem_escapes i =
+        try
+          let j = String.index_from s i '\027' in
+          let k = String.index_from s (j+1) 'm' in
+          String.sub s j (k - j + 1) :: rem_escapes (k+1)
+        with Not_found | Invalid_argument _ -> []
+      in
+      String.concat "" (sub :: rem_escapes cut_at)
 
   let indent_left s ?(visual=s) nb =
     let nb = nb - String.length visual in
@@ -818,13 +818,13 @@ module OpamFormat = struct
   let align_table ll =
     let rec transpose ll =
       if List.for_all ((=) []) ll then [] else
-      let col, rest =
-        List.fold_left (fun (col,rest) -> function
-            | hd::tl -> hd::col, tl::rest
-            | [] -> ""::col, []::rest)
-          ([],[]) ll
-      in
-      List.rev col::transpose (List.rev rest)
+        let col, rest =
+          List.fold_left (fun (col,rest) -> function
+              | hd::tl -> hd::col, tl::rest
+              | [] -> ""::col, []::rest)
+            ([],[]) ll
+        in
+        List.rev col::transpose (List.rev rest)
     in
     let columns = transpose ll in
     let pad n s =
@@ -858,11 +858,11 @@ module OpamFormat = struct
     let buf = Buffer.create 1024 in
     let rec find_nonsp i =
       if i >= slen then i else
-      match s.[i] with ' ' -> find_nonsp (i+1) | _ -> i
+        match s.[i] with ' ' -> find_nonsp (i+1) | _ -> i
     in
     let rec find_split i =
       if i >= slen then i else
-      match s.[i] with ' ' | '\n' -> i | _ -> find_split (i+1)
+        match s.[i] with ' ' | '\n' -> i | _ -> find_split (i+1)
     in
     let newline i =
       Buffer.add_char buf '\n';
@@ -872,16 +872,16 @@ module OpamFormat = struct
     let rec print i col =
       if i >= slen then () else
       if s.[i] = '\n' then (newline i; print (i+1) indent) else
-      let j = find_nonsp i in
-      let k = find_split j in
-      let len_visual = visual_length_substring s i (k - i) in
-      if col + len_visual >= width && col > indent then
-        (newline i;
-         Buffer.add_substring buf s j (k - j);
-         print k (indent + len_visual - j + i))
-      else
-        (Buffer.add_substring buf s i (k - i);
-         print k (col + len_visual))
+        let j = find_nonsp i in
+        let k = find_split j in
+        let len_visual = visual_length_substring s i (k - i) in
+        if col + len_visual >= width && col > indent then
+          (newline i;
+           Buffer.add_substring buf s j (k - j);
+           print k (indent + len_visual - j + i))
+        else
+          (Buffer.add_substring buf s i (k - i);
+           print k (col + len_visual))
     in
     print 0 start_column;
     Buffer.contents buf

@@ -130,4 +130,4 @@ val prefixes: OpamFilename.Dir.t -> string option Map.t
 val unknown: Name.t -> Version.t option -> 'a
 
 (** Parallel executions. *)
-module Graph: OpamParallel.GRAPH with type V.t = t
+(*module Graph: OpamParallel.GRAPH with type V.t = t*)

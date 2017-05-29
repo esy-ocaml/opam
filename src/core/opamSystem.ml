@@ -21,9 +21,9 @@ let slog = OpamConsole.slog
 
 let internal_error fmt =
   Printf.ksprintf (fun str ->
-    log "error: %s" str;
-    raise (Internal_error str)
-  ) fmt
+      log "error: %s" str;
+      raise (Internal_error str)
+    ) fmt
 
 let process_error r =
   if r.OpamProcess.r_signal = Some Sys.sigint then raise Sys.Break
@@ -38,18 +38,18 @@ let command_not_found cmd =
 module Sys2 = struct
   (* same as [Sys.is_directory] except for symlinks, which returns always [false]. *)
   let is_directory file =
-    try Unix.( (lstat file).st_kind = S_DIR )
-    with Unix.Unix_error _ as e -> raise (Sys_error (Printexc.to_string e))
+    try UnixNode.( (lstat file).st_kind = S_DIR )
+    with UnixNode.Unix_error _ as e -> raise (Sys_error (Printexc.to_string e))
 end
 
 let file_or_symlink_exists f =
-  try ignore (Unix.lstat f); true
-  with Unix.Unix_error (Unix.ENOENT, _, _) -> false
+  try ignore (UnixNode.lstat f); true
+  with UnixNode.Unix_error (UnixNode.ENOENT, _, _) -> false
 
 let (/) = Filename.concat
 
 let temp_basename prefix =
-  Printf.sprintf "%s-%d-%06x" prefix (Unix.getpid ()) (Random.int 0xFFFFFF)
+  Printf.sprintf "%s-%d-%06x" prefix (UnixNode.getpid ()) (Random.int 0xFFFFFF)
 
 let rec mk_temp_dir () =
   let s = Filename.get_temp_dir_name () / temp_basename "opam" in
@@ -61,9 +61,9 @@ let rec mk_temp_dir () =
 let safe_mkdir dir =
   try
     log "mkdir %s" dir;
-    Unix.mkdir dir 0o755
+    UnixNode.mkdir dir 0o755
   with
-    Unix.Unix_error(Unix.EEXIST,_,_) -> ()
+    UnixNode.Unix_error(UnixNode.EEXIST,_,_) -> ()
 
 let mkdir dir =
   let rec aux dir =
@@ -83,8 +83,8 @@ let remove_dir dir =
   log "rmdir %s" dir;
   if Sys.file_exists dir then (
     let err = Sys.command (Printf.sprintf "%s %s" rm_command dir) in
-      if err <> 0 then
-        internal_error "Cannot remove %s (error %d)." dir err
+    if err <> 0 then
+      internal_error "Cannot remove %s (error %d)." dir err
   )
 
 let temp_files = Hashtbl.create 1024
@@ -94,14 +94,14 @@ let logs_cleaner =
     (fun () ->
        OpamStd.String.Set.iter (fun f ->
            try
-             Unix.unlink f;
+             UnixNode.unlink f;
              (* Only log the item if unlink succeeded *)
              log "logs_cleaner: rm: %s" f
-           with Unix.Unix_error _ -> ())
+           with UnixNode.Unix_error _ -> ())
          !to_clean;
        if OpamCoreConfig.(!r.log_dir = default.log_dir) then
-         try Unix.rmdir OpamCoreConfig.(default.log_dir)
-         with Unix.Unix_error _ -> ());
+         try UnixNode.rmdir OpamCoreConfig.(default.log_dir)
+         with UnixNode.Unix_error _ -> ());
   fun tmp_dir ->
     if OpamCoreConfig.(!r.keep_log_dir) then
       to_clean := OpamStd.String.Set.remove tmp_dir !to_clean
@@ -124,12 +124,12 @@ let rec temp_file ?(auto_clean=true) ?dir prefix =
 
 let remove_file file =
   if
-    try ignore (Unix.lstat file); true with Unix.Unix_error _ -> false
+    try ignore (UnixNode.lstat file); true with UnixNode.Unix_error _ -> false
   then (
     try
       log "rm %s" file;
-      Unix.unlink file
-    with Unix.Unix_error _ as e ->
+      UnixNode.unlink file
+    with UnixNode.Unix_error _ as e ->
       internal_error "Cannot remove %s (%s)." file (Printexc.to_string e)
   )
 
@@ -152,7 +152,7 @@ let read file =
   let ic =
     try open_in_bin file
     with Sys_error _ -> raise (File_not_found file) in
-  Unix.lockf (Unix.descr_of_in_channel ic) Unix.F_RLOCK 0;
+  UnixNode.lockf (UnixNode.descr_of_in_channel ic) UnixNode.F_RLOCK 0;
   let s = string_of_channel ic in
   close_in ic;
   s
@@ -163,13 +163,13 @@ let write file contents =
     try open_out_bin file
     with Sys_error _ -> raise (File_not_found file)
   in
-  Unix.lockf (Unix.descr_of_out_channel oc) Unix.F_LOCK 0;
+  UnixNode.lockf (UnixNode.descr_of_out_channel oc) UnixNode.F_LOCK 0;
   output_string oc contents;
   close_out oc
 
 let chdir dir =
-  try Unix.chdir dir
-  with Unix.Unix_error _ -> raise (File_not_found dir)
+  try UnixNode.chdir dir
+  with UnixNode.Unix_error _ -> raise (File_not_found dir)
 
 let in_dir dir fn =
   let reset_cwd =
@@ -192,26 +192,26 @@ let in_dir dir fn =
 let list kind dir =
   try
     in_dir dir (fun () ->
-      let d = Sys.readdir (Sys.getcwd ()) in
-      let d = Array.to_list d in
-      let l = List.filter kind d in
-      List.map (Filename.concat dir) (List.sort compare l)
-    )
+        let d = Sys.readdir (Sys.getcwd ()) in
+        let d = Array.to_list d in
+        let l = List.filter kind d in
+        List.map (Filename.concat dir) (List.sort compare l)
+      )
   with File_not_found _ -> []
 
 let ls dir = list (fun _ -> true) dir
 
 let files_with_links =
-  list (fun f -> try not (Sys.is_directory f) with Sys_error _ -> false)
+  list (fun f -> try not (SysNode.is_directory f) with Sys_error _ -> false)
 
 let files_all_not_dir =
-    list (fun f -> try not (Sys2.is_directory f) with Sys_error _ -> false)
+  list (fun f -> try not (Sys2.is_directory f) with Sys_error _ -> false)
 
 let directories_strict =
   list (fun f -> try Sys2.is_directory f with Sys_error _ -> false)
 
 let directories_with_links =
-  list (fun f -> try Sys.is_directory f with Sys_error _ -> false)
+  list (fun f -> try SysNode.is_directory f with Sys_error _ -> false)
 
 let rec_files dir =
   let rec aux accu dir =
@@ -274,31 +274,31 @@ let normalize s =
 
 let real_path p =
   (* if Filename.is_relative p then *)
-    match (try Some (Sys.is_directory p) with Sys_error _ -> None) with
-    | None ->
-      let rec resolve dir =
-        if Sys.file_exists dir then normalize dir else
+  match (try Some (SysNode.is_directory p) with Sys_error _ -> None) with
+  | None ->
+    let rec resolve dir =
+      if Sys.file_exists dir then normalize dir else
         let parent = Filename.dirname dir in
         if dir = parent then dir
         else Filename.concat (resolve parent) (Filename.basename dir)
-      in
-      let p =
-        if Filename.is_relative p then Filename.concat (Sys.getcwd ()) p
-        else p
-      in
-      resolve p
-    | Some true -> normalize p
-    | Some false ->
-      let dir = normalize (Filename.dirname p) in
-      match Filename.basename p with
-      | "." -> dir
-      | base -> dir / base
-  (* else p *)
+    in
+    let p =
+      if Filename.is_relative p then Filename.concat (Sys.getcwd ()) p
+      else p
+    in
+    resolve p
+  | Some true -> normalize p
+  | Some false ->
+    let dir = normalize (Filename.dirname p) in
+    match Filename.basename p with
+    | "." -> dir
+    | base -> dir / base
+(* else p *)
 
 type command = string list
 
 let default_env =
-  Unix.environment ()
+  UnixNode.environment ()
 
 let env_var env var =
   let len = Array.length env in
@@ -307,10 +307,10 @@ let env_var env var =
   let pfxlen = String.length prefix in
   let rec aux i =
     if i >= len then "" else
-    let s = env.(i) in
-    if OpamStd.String.starts_with ~prefix (f s) then
-      String.sub s pfxlen (String.length s - pfxlen)
-    else aux (i+1)
+      let s = env.(i) in
+      if OpamStd.String.starts_with ~prefix (f s) then
+        String.sub s pfxlen (String.length s - pfxlen)
+      else aux (i+1)
   in
   aux 0
 
@@ -325,21 +325,24 @@ let command_exists =
           let rec f acc index current last normal =
             if index = length
             then let current = current ^ String.sub path last (index - last) in
-                 if current <> "" then current::acc else acc
+              if current <> "" then current::acc else acc
             else let c = path.[index]
-                 and next = succ index in
-                 if c = ';' && normal || c = '"' then
-                   let current = current ^ String.sub path last (index - last) in
-                   if c = '"' then
-                     f acc next current next (not normal)
-                   else
-                     let acc = if current = "" then acc else current::acc in
-                     f acc next "" next true
-                 else
-                   f acc next current last normal in
+              and next = succ index in
+              if c = ';' && normal || c = '"' then
+                let current = current ^ String.sub path last (index - last) in
+                if c = '"' then
+                  f acc next current next (not normal)
+                else
+                  let acc = if current = "" then acc else current::acc in
+                  f acc next "" next true
+              else
+                f acc next current last normal in
           f [] 0 "" 0 true in
         let name = if Filename.check_suffix name ".exe" then name else name ^ ".exe" in
-        List.exists (fun path -> let name = Filename.concat path name in Sys.file_exists name && (Unix.stat name).Unix.st_kind = Unix.S_REG) search
+        List.exists (fun path -> let name = Filename.concat path name in
+                      Sys.file_exists name && (UnixNode.stat
+                                                 name).UnixNode.st_kind =
+                                              UnixNode.S_REG) search
     else
       fun name ->
         let cmd, args = "/bin/sh", ["-c"; Printf.sprintf "command -v %s" name] in
@@ -360,7 +363,7 @@ let command_exists =
               in
               (try
 
-                 let open Unix in
+                 let open UnixNode in
                  let uid = getuid() and groups = Array.to_list(getgroups()) in
                  let s = stat cmdname in
                  let cmd_uid = s.st_uid and cmd_gid = s.st_gid and cmd_perms = s.st_perm in
@@ -378,16 +381,16 @@ let command_exists =
     if dir <> None && is_external_cmd name then
       check_existence env ?dir name (* relative command, no caching *)
     else
-    let path = env_var env "PATH" in
-    try Hashtbl.find (Hashtbl.find cached_results path) name
-    with Not_found ->
-      let r = check_existence env name in
-      (try Hashtbl.add (Hashtbl.find cached_results path) name r
-       with Not_found ->
-         let phash = Hashtbl.create 17 in
-         Hashtbl.add phash name r;
-         Hashtbl.add cached_results path phash);
-      r
+      let path = env_var env "PATH" in
+      try Hashtbl.find (Hashtbl.find cached_results path) name
+      with Not_found ->
+        let r = check_existence env name in
+        (try Hashtbl.add (Hashtbl.find cached_results path) name r
+         with Not_found ->
+           let phash = Hashtbl.create 17 in
+           Hashtbl.add phash name r;
+           Hashtbl.add cached_results path phash);
+        r
 
 let runs = ref []
 let print_stats () =
@@ -485,10 +488,10 @@ let verbose_for_base_commands () =
   OpamCoreConfig.(!r.verbose_level) >= 3
 
 let copy_file src dst =
-  if (try Sys.is_directory src
+  if (try SysNode.is_directory src
       with Sys_error _ -> raise (File_not_found src))
   then internal_error "Cannot copy %s: it is a directory." src;
-  if (try Sys.is_directory dst with Sys_error _ -> false)
+  if (try SysNode.is_directory dst with Sys_error _ -> false)
   then internal_error "Cannot copy to %s: it is a directory." dst;
   if file_or_symlink_exists dst
   then remove_file dst;
@@ -497,7 +500,7 @@ let copy_file src dst =
 
 let copy_dir src dst =
   if Sys.file_exists dst then
-    if Sys.is_directory dst then
+    if SysNode.is_directory dst then
       match ls src with
       | [] -> ()
       | srcfiles ->
@@ -516,23 +519,23 @@ let mv src dst =
   command ~verbose:(verbose_for_base_commands ()) ["mv"; src; dst ]
 
 let is_exec file =
-  let stat = Unix.stat file in
-  stat.Unix.st_kind = Unix.S_REG &&
-  stat.Unix.st_perm land 0o111 <> 0
+  let stat = UnixNode.stat file in
+  stat.UnixNode.st_kind = UnixNode.S_REG &&
+  stat.UnixNode.st_perm land 0o111 <> 0
 
-let file_is_empty f = Unix.((stat f).st_size = 0)
+let file_is_empty f = UnixNode.((stat f).st_size = 0)
 
 let install ?exec src dst =
-  if Sys.is_directory src then
+  if SysNode.is_directory src then
     internal_error "Cannot install %s: it is a directory." src;
-  if (try Sys.is_directory dst with Sys_error _ -> false) then
+  if (try SysNode.is_directory dst with Sys_error _ -> false) then
     internal_error "Cannot install to %s: it is a directory." dst;
   mkdir (Filename.dirname dst);
   let exec = match exec with
     | Some e -> e
     | None -> is_exec src in
   command ("install" :: "-m" :: (if exec then "0755" else "0644") ::
-     [ src; dst ])
+           [ src; dst ])
 
 let cpu_count () =
   try
@@ -588,11 +591,11 @@ module Tar = struct
     let ext =
       List.fold_left
         (fun acc (ext, c) -> match acc with
-          | Some f -> Some f
-          | None   ->
-            if match_ext file ext
-            then Some (command c)
-            else None)
+           | Some f -> Some f
+           | None   ->
+             if match_ext file ext
+             then Some (command c)
+             else None)
         None
         extensions in
     match ext with
@@ -632,38 +635,38 @@ let extract_job ~dir file =
   if not (Sys.file_exists file) then
     Done (Some (File_not_found file))
   else
-  with_tmp_dir_job @@ fun tmp_dir ->
-  match extract_command file with
-  | None   ->
-    (try
-       mkdir dir;
-       copy_file file (dir/Filename.basename file);
-       Done None
-     with e -> Done (Some e))
-  | Some cmd ->
-    cmd tmp_dir @@> fun r ->
-    if not (OpamProcess.is_success r) then
-      Done (Some (Process_error r))
-    else if try not (Sys.is_directory dir) with Sys_error _ -> false then
-      internal_error "Extracting the archive would overwrite %s." dir
-    else
-    match files_all_not_dir tmp_dir with
-    | [] ->
-      begin match directories_strict tmp_dir with
-        | [x] ->
-          (try
-             mkdir (Filename.dirname dir);
-             copy_dir x dir;
-             Done None
-           with e -> OpamStd.Exn.fatal e; Done (Some e))
-        | _ ->
-          internal_error "The archive %S contains multiple root directories."
-            file
-      end
-    | _   ->
-      mkdir (Filename.dirname dir);
-      try copy_dir tmp_dir dir; Done None
-      with e -> OpamStd.Exn.fatal e; Done (Some e)
+    with_tmp_dir_job @@ fun tmp_dir ->
+    match extract_command file with
+    | None   ->
+      (try
+         mkdir dir;
+         copy_file file (dir/Filename.basename file);
+         Done None
+       with e -> Done (Some e))
+    | Some cmd ->
+      cmd tmp_dir @@> fun r ->
+      if not (OpamProcess.is_success r) then
+        Done (Some (Process_error r))
+      else if try not (SysNode.is_directory dir) with Sys_error _ -> false then
+        internal_error "Extracting the archive would overwrite %s." dir
+      else
+        match files_all_not_dir tmp_dir with
+        | [] ->
+          begin match directories_strict tmp_dir with
+            | [x] ->
+              (try
+                 mkdir (Filename.dirname dir);
+                 copy_dir x dir;
+                 Done None
+               with e -> OpamStd.Exn.fatal e; Done (Some e))
+            | _ ->
+              internal_error "The archive %S contains multiple root directories."
+                file
+          end
+        | _   ->
+          mkdir (Filename.dirname dir);
+          try copy_dir tmp_dir dir; Done None
+          with e -> OpamStd.Exn.fatal e; Done (Some e)
 
 let extract ~dir file =
   match OpamProcess.Job.run (extract_job ~dir file) with
@@ -694,14 +697,14 @@ let link src dst =
     remove_file dst;
   try
     log "ln -s %s %s" src dst;
-    Unix.symlink src dst
-  with Unix.Unix_error (Unix.EXDEV, _, _) ->
+    UnixNode.symlink src dst
+  with UnixNode.Unix_error (UnixNode.EXDEV, _, _) ->
     (* Fall back to copy if symlinks are not supported *)
     let src =
       if Filename.is_relative src then Filename.dirname dst / src
       else src
     in
-    if Sys.is_directory src then
+    if SysNode.is_directory src then
       copy_dir src dst
     else
       copy_file src dst
@@ -709,7 +712,7 @@ let link src dst =
 type lock_flag = [ `Lock_none | `Lock_read | `Lock_write ]
 
 type lock = {
-  mutable fd: Unix.file_descr option;
+  mutable fd: UnixNode.file_descr option;
   file: string;
   mutable kind: lock_flag;
 }
@@ -717,12 +720,12 @@ type lock = {
 exception Locked
 
 let unix_lock_op ~dontblock = function
-  | `Lock_read -> if dontblock then Unix.F_TRLOCK else Unix.F_RLOCK
+  | `Lock_read -> if dontblock then UnixNode.F_TRLOCK else UnixNode.F_RLOCK
   | `Lock_write ->
     if OpamCoreConfig.(!r.safe_mode) then
       OpamConsole.error_and_exit "Write lock attempt in safe mode"
     else
-    if dontblock then Unix.F_TLOCK else Unix.F_LOCK
+    if dontblock then UnixNode.F_TLOCK else UnixNode.F_LOCK
 
 let string_of_lock_kind = function
   | `Lock_none -> "none"
@@ -732,52 +735,52 @@ let string_of_lock_kind = function
 let rec flock_update
   : 'a. ([< lock_flag ] as 'a) -> ?dontblock:bool -> lock -> unit
   = fun flag ?(dontblock=OpamCoreConfig.(!r.safe_mode)) lock ->
-  log "LOCK %s (%a => %a)" ~level:2 lock.file
-    (slog string_of_lock_kind) (lock.kind)
-    (slog string_of_lock_kind) flag;
-  if lock.kind = (flag :> lock_flag) then ()
-  else
-  match flag, lock with
-  | `Lock_none, { fd = Some fd; kind = (`Lock_read | `Lock_write); _ } ->
-    Unix.close fd; (* implies Unix.lockf fd Unix.F_ULOCK 0 *)
-    lock.kind <- (flag :> lock_flag);
-    lock.fd <- None
-  | (`Lock_read | `Lock_write), { fd = None; kind = `Lock_none; file } ->
-    let new_lock = flock flag ~dontblock file in
-    lock.kind <- (flag :> lock_flag);
-    lock.fd <- new_lock.fd
-  | `Lock_write, { fd = Some fd; file; kind = `Lock_read } ->
-    Unix.close fd; (* fd needs read-write reopen *)
-    let new_lock = flock flag ~dontblock file in
-    lock.kind <- (flag :> lock_flag);
-    lock.fd <- new_lock.fd
-  | (`Lock_read | `Lock_write) as flag, { fd = Some fd; file; _ } ->
-    (try
-       Unix.lockf fd (unix_lock_op ~dontblock:true flag) 0
-     with Unix.Unix_error (Unix.EAGAIN,_,_) ->
-       if dontblock then raise Locked;
-       OpamConsole.formatted_msg
-         "Another process has locked %s, waiting (C-c to abort)... "
-         file;
-       (try Unix.lockf fd (unix_lock_op ~dontblock:false flag) 0;
-        with Sys.Break as e -> OpamConsole.msg "\n"; raise e);
-       OpamConsole.msg "lock acquired.\n");
-    lock.kind <- (flag :> lock_flag)
-  | _ -> assert false
+    log "LOCK %s (%a => %a)" ~level:2 lock.file
+      (slog string_of_lock_kind) (lock.kind)
+      (slog string_of_lock_kind) flag;
+    if lock.kind = (flag :> lock_flag) then ()
+    else
+      match flag, lock with
+      | `Lock_none, { fd = Some fd; kind = (`Lock_read | `Lock_write); _ } ->
+        UnixNode.close fd; (* implies UnixNode.lockf fd UnixNode.F_ULOCK 0 *)
+        lock.kind <- (flag :> lock_flag);
+        lock.fd <- None
+      | (`Lock_read | `Lock_write), { fd = None; kind = `Lock_none; file } ->
+        let new_lock = flock flag ~dontblock file in
+        lock.kind <- (flag :> lock_flag);
+        lock.fd <- new_lock.fd
+      | `Lock_write, { fd = Some fd; file; kind = `Lock_read } ->
+        UnixNode.close fd; (* fd needs read-write reopen *)
+        let new_lock = flock flag ~dontblock file in
+        lock.kind <- (flag :> lock_flag);
+        lock.fd <- new_lock.fd
+      | (`Lock_read | `Lock_write) as flag, { fd = Some fd; file; _ } ->
+        (try
+           UnixNode.lockf fd (unix_lock_op ~dontblock:true flag) 0
+         with UnixNode.Unix_error (UnixNode.EAGAIN,_,_) ->
+           if dontblock then raise Locked;
+           OpamConsole.formatted_msg
+             "Another process has locked %s, waiting (C-c to abort)... "
+             file;
+           (try UnixNode.lockf fd (unix_lock_op ~dontblock:false flag) 0;
+            with Sys.Break as e -> OpamConsole.msg "\n"; raise e);
+           OpamConsole.msg "lock acquired.\n");
+        lock.kind <- (flag :> lock_flag)
+      | _ -> assert false
 
 and flock: 'a. ([< lock_flag ] as 'a) -> ?dontblock:bool -> string -> lock =
   fun flag ?dontblock file ->
-  match flag with
-  | `Lock_none -> { fd = None; file; kind = `Lock_none }
-  | `Lock_write when OpamCoreConfig.(!r.safe_mode) ->
-    OpamConsole.error_and_exit "Write lock attempt in safe mode";
-  | flag ->
-    mkdir (Filename.dirname file);
-    let rdflag = if (flag :> lock_flag) = `Lock_write then Unix.O_RDWR else Unix.O_RDONLY in
-    let fd = Unix.openfile file Unix.([O_CREAT; O_CLOEXEC; rdflag]) 0o666 in
-    let lock = { fd = Some fd; file; kind = `Lock_none } in
-    flock_update flag ?dontblock lock;
-    lock
+    match flag with
+    | `Lock_none -> { fd = None; file; kind = `Lock_none }
+    | `Lock_write when OpamCoreConfig.(!r.safe_mode) ->
+      OpamConsole.error_and_exit "Write lock attempt in safe mode";
+    | flag ->
+      mkdir (Filename.dirname file);
+      let rdflag = if (flag :> lock_flag) = `Lock_write then UnixNode.O_RDWR else UnixNode.O_RDONLY in
+      let fd = UnixNode.openfile file UnixNode.([O_CREAT; O_CLOEXEC; rdflag]) 0o666 in
+      let lock = { fd = Some fd; file; kind = `Lock_none } in
+      flock_update flag ?dontblock lock;
+      lock
 
 let funlock lock = flock_update `Lock_none lock
 
@@ -807,17 +810,17 @@ let patch ~dir p =
 
 let register_printer () =
   Printexc.register_printer (function
-    | Process_error r     -> Some (OpamProcess.result_summary r)
-    | Internal_error m    -> Some m
-    | Command_not_found c -> Some (Printf.sprintf "%S: command not found." c)
-    | Sys.Break           -> Some "User interruption"
-    | Unix.Unix_error (e, fn, msg) ->
-      let msg = if msg = "" then "" else " on " ^ msg in
-      let error = Printf.sprintf "%s: %S failed%s: %s"
-          Sys.argv.(0) fn msg (Unix.error_message e) in
-      Some error
-    | _ -> None
-  )
+      | Process_error r     -> Some (OpamProcess.result_summary r)
+      | Internal_error m    -> Some m
+      | Command_not_found c -> Some (Printf.sprintf "%S: command not found." c)
+      | Sys.Break           -> Some "User interruption"
+      | UnixNode.Unix_error (e, fn, msg) ->
+        let msg = if msg = "" then "" else " on " ^ msg in
+        let error = Printf.sprintf "%s: %S failed%s: %s"
+            Sys.argv.(0) fn msg (UnixNode.error_message e) in
+        Some error
+      | _ -> None
+    )
 
 let init () =
   register_printer ();

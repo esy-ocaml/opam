@@ -69,14 +69,14 @@ type t = {
   p_tmp_files: string list;
 }
 
-let open_flags =  [Unix.O_WRONLY; Unix.O_CREAT; Unix.O_APPEND]
+let open_flags =  [UnixNode.O_WRONLY; UnixNode.O_CREAT; UnixNode.O_APPEND]
 
 let output_lines oc lines =
   List.iter (fun line ->
-    output_string oc line;
-    output_string oc "\n";
-    flush oc;
-  ) lines;
+      output_string oc line;
+      output_string oc "\n";
+      flush oc;
+    ) lines;
   output_string oc "\n";
   flush oc
 
@@ -130,31 +130,31 @@ let create ?info_file ?env_file ?(allow_stdin=true) ?stdout_file ?stderr_file ?e
     ~verbose ~tmp_files cmd args =
   let nothing () = () in
   let tee f =
-    let fd = Unix.openfile f open_flags 0o644 in
-    let close_fd () = Unix.close fd in
+    let fd = UnixNode.openfile f open_flags 0o644 in
+    let close_fd () = UnixNode.close fd in
     fd, close_fd in
   let oldcwd = Sys.getcwd () in
   let cwd = OpamStd.Option.default oldcwd dir in
-  OpamStd.Option.iter Unix.chdir dir;
+  OpamStd.Option.iter UnixNode.chdir dir;
   let stdin_fd,close_stdin =
-    if allow_stdin then Unix.stdin, nothing else
-    let fd,outfd = Unix.pipe () in
-    let close_stdin () = Unix.close fd in
-    Unix.close outfd; fd, close_stdin
+    if allow_stdin then UnixNode.stdin, nothing else
+      let fd,outfd = UnixNode.pipe () in
+      let close_stdin () = UnixNode.close fd in
+      UnixNode.close outfd; fd, close_stdin
   in
   let stdout_fd, close_stdout = match stdout_file with
-    | None   -> Unix.stdout, nothing
+    | None   -> UnixNode.stdout, nothing
     | Some f -> tee f in
   let stderr_fd, close_stderr = match stderr_file with
-    | None   -> Unix.stderr, nothing
+    | None   -> UnixNode.stderr, nothing
     | Some f ->
       if stdout_file = Some f then stdout_fd, nothing
       else tee f
   in
   let env = match env with
-    | None   -> Unix.environment ()
+    | None   -> UnixNode.environment ()
     | Some e -> e in
-  let time = Unix.gettimeofday () in
+  let time = UnixNode.gettimeofday () in
 
   let () =
     (* write the env file before running the command*)
@@ -184,7 +184,7 @@ let create ?info_file ?env_file ?(allow_stdin=true) ?stdout_file ?stderr_file ?e
 
   let pid =
     try
-      Unix.create_process_env
+      UnixNode.create_process_env
         cmd
         (Array.of_list (cmd :: args))
         env
@@ -197,7 +197,7 @@ let create ?info_file ?env_file ?(allow_stdin=true) ?stdout_file ?stderr_file ?e
   close_stdin  ();
   close_stdout ();
   close_stderr ();
-  Unix.chdir oldcwd;
+  UnixNode.chdir oldcwd;
   {
     p_name   = cmd;
     p_args   = args;
@@ -242,8 +242,8 @@ let read_lines f =
 
 (* Compat function (Windows) *)
 let interrupt p = match OpamStd.Sys.os () with
-  | OpamStd.Sys.Win32 -> Unix.kill p.p_pid Sys.sigkill
-  | _ -> Unix.kill p.p_pid Sys.sigint
+  | OpamStd.Sys.Win32 -> UnixNode.kill p.p_pid Sys.sigkill
+  | _ -> UnixNode.kill p.p_pid Sys.sigint
 
 let run_background command =
   let { cmd; args;
@@ -254,15 +254,15 @@ let run_background command =
   in
   let verbose = is_verbose_command command in
   let allow_stdin = OpamStd.Option.default false allow_stdin in
-  let env = match env with Some e -> e | None -> Unix.environment () in
+  let env = match env with Some e -> e | None -> UnixNode.environment () in
   let file ext = match name with
     | None -> None
     | Some n ->
       let d =
         if Filename.is_relative n then
           match dir with
-            | Some d -> d
-            | None -> OpamCoreConfig.(!r.log_dir)
+          | Some d -> d
+          | None -> OpamCoreConfig.(!r.log_dir)
         else ""
       in
       Some (Filename.concat d (Printf.sprintf "%s.%s" n ext))
@@ -291,7 +291,7 @@ let dry_run_background c = {
   p_args   = c.args;
   p_pid    = -1;
   p_cwd    = OpamStd.Option.default (Sys.getcwd ()) c.cmd_dir;
-  p_time   = Unix.gettimeofday ();
+  p_time   = UnixNode.gettimeofday ();
   p_stdout = None;
   p_stderr = None;
   p_env    = None;
@@ -330,19 +330,19 @@ let set_verbose_f, print_verbose_f, isset_verbose_f, stop_verbose_f =
     (* implem relies on sigalrm, not implemented on win32.
        This will fall back to buffered output. *)
     if OpamStd.Sys.(os () = Win32) then () else
-    let files = OpamStd.List.sort_nodup compare files in
-    let ics =
-      List.map
-        (open_in_gen [Open_nonblock;Open_rdonly;Open_text;Open_creat] 0o600)
-        files
-    in
-    let f () =
-      List.iter (fun ic ->
-          try while true do verbose_print_out (input_line ic) done
-          with End_of_file -> flush stdout
-        ) ics
-    in
-    verbose_f := Some (ics, f)
+      let files = OpamStd.List.sort_nodup compare files in
+      let ics =
+        List.map
+          (open_in_gen [Open_nonblock;Open_rdonly;Open_text;Open_creat] 0o600)
+          files
+      in
+      let f () =
+        List.iter (fun ic ->
+            try while true do verbose_print_out (input_line ic) done
+            with End_of_file -> flush stdout
+          ) ics
+      in
+      verbose_f := Some (ics, f)
   in
   let print () = match !verbose_f with
     | Some (_, f) -> f ()
@@ -361,13 +361,13 @@ let set_verbose_process p =
     )
 
 let exit_status p return =
-  let duration = Unix.gettimeofday () -. p.p_time in
+  let duration = UnixNode.gettimeofday () -. p.p_time in
   let stdout = option_default [] (option_map read_lines p.p_stdout) in
   let stderr = option_default [] (option_map read_lines p.p_stderr) in
   let cleanup = p.p_tmp_files in
   let code,signal = match return with
-    | Unix.WEXITED r -> Some r, None
-    | Unix.WSIGNALED s | Unix.WSTOPPED s -> None, Some s
+    | UnixNode.WEXITED r -> Some r, None
+    | UnixNode.WSIGNALED s | UnixNode.WSTOPPED s -> None, Some s
   in
   if isset_verbose_f () then
     stop_verbose_f ()
@@ -400,34 +400,34 @@ let safe_wait fallback_pid f x =
   let cleanup () =
     match sh with
     | Some sh ->
-      ignore (Unix.alarm 0); (* cancels the alarm *)
+      ignore (UnixNode.alarm 0); (* cancels the alarm *)
       Sys.set_signal Sys.sigalrm sh
     | None -> ()
   in
   let rec aux () =
-    if sh <> None then ignore (Unix.alarm 1);
+    if sh <> None then ignore (UnixNode.alarm 1);
     match
       try f x with
-      | Unix.Unix_error (Unix.EINTR,_,_) -> aux () (* handled signal *)
-      | Unix.Unix_error (Unix.ECHILD,_,_) ->
+      | UnixNode.Unix_error (UnixNode.EINTR,_,_) -> aux () (* handled signal *)
+      | UnixNode.Unix_error (UnixNode.ECHILD,_,_) ->
         log "Warn: no child to wait for %d" fallback_pid;
-        fallback_pid, Unix.WEXITED 256
-      with
-      | _, Unix.WSTOPPED _ ->
-        (* shouldn't happen as we don't use WUNTRACED *)
-        aux ()
-      | r -> r
+        fallback_pid, UnixNode.WEXITED 256
+    with
+    | _, UnixNode.WSTOPPED _ ->
+      (* shouldn't happen as we don't use WUNTRACED *)
+      aux ()
+    | r -> r
   in
   try let r = aux () in cleanup (); r
   with e -> cleanup (); raise e
 
 let wait p =
   set_verbose_process p;
-  let _, return = safe_wait p.p_pid (Unix.waitpid []) p.p_pid in
+  let _, return = safe_wait p.p_pid (UnixNode.waitpid []) p.p_pid in
   exit_status p return
 
 let dontwait p =
-  match safe_wait p.p_pid (Unix.waitpid [Unix.WNOHANG]) p.p_pid with
+  match safe_wait p.p_pid (UnixNode.waitpid [UnixNode.WNOHANG]) p.p_pid with
   | 0, _ -> None
   | _, return -> Some (exit_status p return)
 
@@ -440,24 +440,24 @@ let wait_one processes =
     let p = List.hd processes in
     p, wait p
   else
-  try
-    let p =
-      List.find (fun p -> Hashtbl.mem dead_childs p.p_pid) processes
-    in
-    let return = Hashtbl.find dead_childs p.p_pid in
-    Hashtbl.remove dead_childs p.p_pid;
-    p, exit_status p return
-  with Not_found ->
-    let rec aux () =
-      let pid, return = safe_wait (List.hd processes).p_pid Unix.wait () in
-      try
-        let p = List.find (fun p -> p.p_pid = pid) processes in
-        p, exit_status p return
-      with Not_found ->
-        Hashtbl.add dead_childs pid return;
-        aux ()
-    in
-    aux ()
+    try
+      let p =
+        List.find (fun p -> Hashtbl.mem dead_childs p.p_pid) processes
+      in
+      let return = Hashtbl.find dead_childs p.p_pid in
+      Hashtbl.remove dead_childs p.p_pid;
+      p, exit_status p return
+    with Not_found ->
+      let rec aux () =
+        let pid, return = safe_wait (List.hd processes).p_pid UnixNode.wait () in
+        try
+          let p = List.find (fun p -> p.p_pid = pid) processes in
+          p, exit_status p return
+        with Not_found ->
+          Hashtbl.add dead_childs pid return;
+          aux ()
+      in
+      aux ()
 
 let dry_wait_one = function
   | {p_pid = -1; _} as p :: _ ->
@@ -479,11 +479,11 @@ let run command =
   in
   let p = run_background command in
   try wait p with e ->
-    match (try dontwait p with _ -> raise e) with
-    | None -> (* still running *)
-      (try interrupt p with Unix.Unix_error _ -> ());
-      raise e
-    | _ -> raise e
+  match (try dontwait p with _ -> raise e) with
+  | None -> (* still running *)
+    (try interrupt p with UnixNode.Unix_error _ -> ());
+    raise e
+  | _ -> raise e
 
 let is_failure r = r.r_code <> 0 || r.r_signal <> None
 
@@ -492,8 +492,8 @@ let is_success r = not (is_failure r)
 let safe_unlink f =
   try
     log ~level:2 "safe_unlink: %s" f;
-    Unix.unlink f
-  with Unix.Unix_error _ ->
+    UnixNode.unlink f
+  with UnixNode.Unix_error _ ->
     log ~level:2 "safe_unlink: %s (FAILED)" f
 
 let cleanup ?(force=false) r =
@@ -527,8 +527,8 @@ let truncate l =
     | _ when n = 0 -> truncate_str :: acc
     | x::l when n = 1 ->
       (if unindented x then truncate_str :: truncate_line x :: acc else
-       try truncate_line (List.find unindented l) :: truncate_str :: acc
-       with Not_found -> truncate_str :: truncate_line x :: acc)
+         try truncate_line (List.find unindented l) :: truncate_str :: acc
+         with Not_found -> truncate_str :: truncate_line x :: acc)
     | x::r -> cut (n-1) (truncate_line x :: acc) r
   in
   let len = OpamCoreConfig.(!r.errlog_length) in
@@ -569,17 +569,17 @@ let result_summary r =
     (try List.assoc "command" r.r_info with Not_found -> "command")
     r.r_code
     (if r.r_code = 0 then "" else
-     match r.r_stderr, r.r_stdout with
-     | [e], _ | [], [e] -> Printf.sprintf " \"%s\"" e
-     | [], es | es, _ ->
-       try
-         Printf.sprintf " \"%s\""
-           (List.find
-              Re.(execp (compile (seq [ bos; rep (diff any alpha);
-                                        no_case (str "error") ])))
-              (List.rev es))
-       with Not_found -> ""
-     | _ -> "")
+       match r.r_stderr, r.r_stdout with
+       | [e], _ | [], [e] -> Printf.sprintf " \"%s\"" e
+       | [], es | es, _ ->
+         try
+           Printf.sprintf " \"%s\""
+             (List.find
+                Re.(execp (compile (seq [ bos; rep (diff any alpha);
+                                          no_case (str "error") ])))
+                (List.rev es))
+         with Not_found -> ""
+            | _ -> "")
 
 (* Higher-level interface to allow parallelism *)
 

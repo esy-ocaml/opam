@@ -115,11 +115,13 @@ type package_flag =
 
 (** At some point we want to abstract so that the same functions can be used
     over CUDF and OPAM packages *)
+(*
 module type GenericPackage = sig
   include OpamParallel.VERTEX
   val name_to_string: t -> string
   val version_to_string: t -> string
 end
+*)
 
 (** {2 Formulas} *)
 
@@ -152,11 +154,11 @@ type repository_name = OpamRepositoryName.t
 type 'a repository_name_map = 'a OpamRepositoryName.Map.t
 
 type url = OpamUrl.t (*= {
-  transport: string;
-  path: string;
-  hash: string option;
-  backend: OpamUrl.backend;
-} *)
+                       transport: string;
+                       path: string;
+                       hash: string option;
+                       backend: OpamUrl.backend;
+                       } *)
 
 type trust_anchors = {
   quorum: int;
